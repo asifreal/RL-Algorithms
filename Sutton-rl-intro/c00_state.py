@@ -31,3 +31,7 @@ class LinearState(State):
 
     def get_all_state(self):
         return self._ss
+
+
+class HermanState(State):
+    pass
