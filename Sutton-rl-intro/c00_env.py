@@ -199,7 +199,7 @@ class HermanEnv(Env):
                 act.append(1)
             else: # lose
                 act.append(0)
-        self._s += self._states.tick(self._s, act)
+        self._s = self._states.tick(self._s, act)
         return (self._s, reward, self.is_done())
 
 def policy_random(env: HermanEnv):
