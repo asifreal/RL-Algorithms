@@ -13,6 +13,7 @@ class Env:
     """
     def __init__(self, name='env'):
         self.env_name = name
+        self._s : int=None   # current state
 
     def is_done(self) -> bool:
         """
@@ -27,10 +28,17 @@ class Env:
         """
         raise NotImplementedError
 
-    def get_all_state(self):
+    def get_all_state(self) -> List[int]:
         """
         return all states available
         @return: List(int)
+        """
+        raise NotImplementedError
+
+    def get_all_state_action(self) -> Dict[int, List[int]]:
+        """
+        return all (states, action, next state) pairs
+        @return: Dict([int, Dict[int, int]])
         """
         raise NotImplementedError
 
@@ -94,6 +102,12 @@ class GamblerEnv(Env):
 
     def get_all_state(self) -> List[int]:
         return self._states.get_all_state()
+
+    def get_all_state_action(self) -> Dict[int, List[int]]:
+        sa = {}
+        for s in self.get_all_state():
+            sa[s] = list(range(1, min(s+1, self.N - s + 1)))
+        return sa
 
     def reset(self, val=None) -> int:
         if val is None:
@@ -165,6 +179,10 @@ class HermanEnv(Env):
     We have N position with M token.
     But I can't figure out what the policy is in herman, it is just all random
     So I don't think there is an optimal solution in herman...
+    Here for Optimal solution, I just remove random assumption, 
+    let every state & action can choose it's probility to happen. just like gambler problem
+    but what if the policy always choose (1,1,1), then it never stop... 
+    so the max expectation time is inf... maybe min expectation time is better?
     """
     def __init__(self, N, M=3, p=0.5, seed=None):
         super(HermanEnv, self).__init__('herman env')
@@ -192,6 +210,12 @@ class HermanEnv(Env):
     def get_all_state(self) -> List[int]:
         return self._states.get_all_state()
 
+    def get_all_state_action(self) -> Dict[int, List[int]]:
+        return self._states.get_all_state_action()
+
+    def get_state_name(self, state):
+        return self._states.get_state_name(state)
+
     def step(self, action):
         reward, act = 1, []
         for i in range(self._states.get_state_size(self._s)):
@@ -199,7 +223,7 @@ class HermanEnv(Env):
                 act.append(1)
             else: # lose
                 act.append(0)
-        self._s = self._states.tick(self._s, act)
+        self._s = self._states.tick(self._s, tuple(act))
         return (self._s, reward, self.is_done())
 
 def policy_random(env: HermanEnv):

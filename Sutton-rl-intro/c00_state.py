@@ -73,9 +73,15 @@ class HermanState(State):
         assert M % 2 == 1 
         assert N % 2 == 1
         assert M <= N
-        self.build(N, M)
+        self.states_actions_next_state = {}
+        self.build_state(N, M)
+        self.build_action()
 
-    def build(self, N, M):
+    def build_state(self, N, M):
+        """
+        find and merge equal states
+        if two state become same after rotate or filp, then then shoud be merged
+        """
         raw_states = []
         size_dict = {}
         while M >= 3:
@@ -116,15 +122,47 @@ class HermanState(State):
             self.states_mapping[s] = i
         self._ss = list(range(len(self.states)))
 
+    def build_action(self):
+        """
+        find and merge equal actions
+        if two actions has same effect(result to same next_state), they should be same action
+        """
+        self.state_action, self._sa = {}, {}
+        for s in self._ss:
+            act_ns, ns_act = {}, {}
+            length = self.get_state_size(s)
+            for a in itertools.product([0,1], repeat=length):
+                new_s = self.tick(s, a)
+                act_ns[a] = new_s
+                if new_s in ns_act:
+                    ns_act[new_s].append(a)
+                else:
+                    ns_act[new_s] = [a]
+            self.states_actions_next_state[s] = act_ns
+            self.state_action[s] = {}    # don't care the action probability in random policy, for Q is for optim
+            for i, ns in enumerate(ns_act.keys()):
+                self.state_action[s][i] = ns  # shrink (s,a) for Q 
+        for k, v in self.state_action.items():
+            self._sa[k] = list(v.keys())
+
     def get_all_state(self):
         return self._ss
+
+    def get_all_state_action(self):
+        return self._sa
 
     def get_state_size(self, state):
         idx = self.states[state]
         return len(self.raw_states[idx])
 
+    def get_state_name(self, state):
+        idx = self.states[state]
+        return self.raw_states[idx]
+
     # put tick here for simple
     def tick(self, state, action):
+        if state in self.states_actions_next_state and action in self.states_actions_next_state[state]:
+            return self.states_actions_next_state[state][action]
         idx = self.states[state]
         state = self.raw_states[idx]
         assert len(state) == len(action)
@@ -146,5 +184,6 @@ if __name__ == "__main__":
     print(hs.raw_states)
     print(hs.shrink_mapping)
     print(len(hs._ss))
+    print(hs._sa)
     print(hs.states)
     print(hs.tick(0, (0,1,1))) # 0-> (0,1,2) -> (0,2,3) -> (0,1,3) -> 1
