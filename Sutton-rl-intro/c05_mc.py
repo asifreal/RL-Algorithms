@@ -14,7 +14,7 @@ class MC(Algo):
         self.env = env
         self.gamma = gamma
 
-    def simulate(self, policy, start_list, first_action=None):
+    def simulate(self, policy, start_list=None, first_action=None):
         episode = []
         if start_list is not None: # then it should be a list, for simple
             state = self.env.reset(np.random.choice(start_list))
@@ -38,7 +38,7 @@ class OnlineMC(MC):
     def __init__(self, env: Env, gamma=1):
         super(OnlineMC, self).__init__('online monte carlo algo', env, gamma)
 
-    def cal_first_visit(self, episode, value, count, sa=None):
+    def cal_first_visit(self, episode, value, count, isq=False):
         G, length = 0, len(episode)
         R, visit, = [], set()
         for e in reversed(episode): 
@@ -46,11 +46,10 @@ class OnlineMC(MC):
             G = self.gamma * G + reward
             R.append(G)
         for i, e in enumerate(episode):
-            state, action, reward = e[0], e[1], R[length-i-1]
+            state, act, reward = e[0], e[1], R[length-i-1]
             if state not in visit:
-                if sa:
-                    act = sa[state].index(action)
-                    visit.add((state, action))
+                if isq:
+                    visit.add((state, act))
                     count[state][act] += 1
                     value[state][act] = value[state][act] + (reward - value[state][act])/count[state][act]
                 else:
@@ -58,13 +57,12 @@ class OnlineMC(MC):
                     count[state] += 1
                     value[state] = value[state] + (reward - value[state])/count[state]
     
-    def cal_every_visit(self, episode, value, count, sa=None):
+    def cal_every_visit(self, episode, value, count, isq=False):
         G = 0
         for e in episode:
-            state, action, reward = e[0], e[1], e[2]
+            state, act, reward = e[0], e[1], e[2]
             G = self.gamma * G + reward
-            if sa:
-                act = sa[state].index(action)
+            if isq:
                 count[state][act] += 1
                 value[state][act] = value[state][act] + (G - value[state][act])/count[state][act]
             else:
@@ -113,15 +111,57 @@ class OnlineMCES(OnlineMC):
             values = q_value[env._s]
             max_val = np.max(values)
             idx = np.random.choice([act for act, value in enumerate(values) if value == max_val])
-            return state_actions[env._s][idx]
+            return idx
 
         s_choices = list(q_value.keys())
         for epoch in range(1, epochs+1):
             s = np.random.choice(s_choices)
-            a = state_actions[s][np.random.randint(0, len(q_value[s]))]
+            a = np.random.randint(0, len(q_value[s]))
             episode = self.simulate(policy, start_list=[s], first_action=a)
-            if cal_type == 'first': self.cal_first_visit(episode, q_value, c_value, sa=state_actions)
-            else: self.cal_every_visit(episode, q_value, c_value, sa=state_actions)
+            if cal_type == 'first': self.cal_first_visit(episode, q_value, c_value, isq=True)
+            else: self.cal_every_visit(episode, q_value, c_value, isq=True)
+        
+        for s in q_value.keys():
+            q_value[s] = np.round(q_value[s], decimals=4)
+        return q_value
+
+
+class OnlineMCSoft(OnlineMC):
+    """
+    monte carlo with soft greedy strategy to estimate best policy
+    """
+    def __init__(self, env: Env, gamma=1, epsi_low=0.1, epsi_high=0.8, decay=1000):
+        super(OnlineMCSoft, self).__init__(env, gamma)
+        self.epsilon = 0
+        self.epsi_low = epsi_low
+        self.epsi_high = epsi_high
+        self.decay = decay
+
+    def fit_v(self, policy=None, epochs=1000, cal_type='first'):
+        raise NotImplementedError("MC Soft cat't estimate V(s)")
+
+    def fit_q(self, policy=None, epochs=1000, cal_type='first'):
+        q_value = {}
+        c_value = {}
+        state_actions = self.env.get_all_state_action()
+        for (s, alist) in state_actions.items():
+            q_value[s] = np.zeros(len(alist))
+            c_value[s] = np.zeros(len(alist))
+        
+        def policy(env: Env):
+            if np.random.random() < self.epsilon: # random
+                idx = np.random.randint( 0, len(q_value[env._s]))
+            else:
+                values = q_value[env._s]
+                max_val = np.max(values)
+                idx = np.random.choice([act for act, value in enumerate(values) if value == max_val])
+            return idx
+
+        for epoch in range(1, epochs+1):
+            self.epsilon = self.epsi_low + (self.epsi_high-self.epsi_low) * (np.exp(-1.0 * epoch/self.decay))
+            episode = self.simulate(policy)
+            if cal_type == 'first': self.cal_first_visit(episode, q_value, c_value, isq=True)
+            else: self.cal_every_visit(episode, q_value, c_value, isq=True)
         
         for s in q_value.keys():
             q_value[s] = np.round(q_value[s], decimals=4)

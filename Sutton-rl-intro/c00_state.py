@@ -141,7 +141,7 @@ class HermanState(State):
             self.states_actions_next_state[s] = act_ns
             self.state_action[s] = {}    # don't care the action probability in random policy, for Q is for optim
             for i, ns in enumerate(ns_act.keys()):
-                self.state_action[s][i] = ns  # shrink (s,a) for Q 
+                self.state_action[s][i] = (ns, ns_act[ns][0])  # shrink (s,a) for Q 
         for k, v in self.state_action.items():
             self._sa[k] = list(v.keys())
 

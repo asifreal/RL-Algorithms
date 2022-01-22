@@ -49,10 +49,10 @@ class Env:
         """
         raise NotImplementedError
 
-    def step(self, action):
+    def step(self, action_idx):
         """
         agent can interact with environment use this method
-        @param action: what action agent takes
+        @param action_idx: what action agent takes, *Attention* action is the index in available action space!
         @return: tuple(nest_state, reward, done)
         """
         raise NotImplementedError
@@ -94,6 +94,10 @@ class GamblerEnv(Env):
         self._rl = lose_reward
         self._its = include_terminate_state
         self._states : State = LinearState(N, include_terminate_state)
+        sa = {}
+        for s in self.get_all_state():
+            sa[s] = list(range(1, min(s+1, self.N - s + 1)))
+        self.state_action = sa
         if seed: np.random.seed(seed)
 
     def set_state(self, s) -> None:
@@ -104,10 +108,7 @@ class GamblerEnv(Env):
         return self._states.get_all_state()
 
     def get_all_state_action(self) -> Dict[int, List[int]]:
-        sa = {}
-        for s in self.get_all_state():
-            sa[s] = list(range(1, min(s+1, self.N - s + 1)))
-        return sa
+        return self.state_action
 
     def reset(self, val=None) -> int:
         if val is None:
@@ -122,7 +123,8 @@ class GamblerEnv(Env):
         else:
             return self._s <=0 or self._s >= self.N
 
-    def step(self, action):
+    def step(self, action_idx):
+        action = self.state_action[self._s][action_idx]
         assert action <= self._s
         ds, reward = 0, 0
         if np.random.random() < self.p: # win
@@ -141,18 +143,18 @@ class GamblerEnv(Env):
 def policy_all_in(env : GamblerEnv):
     mid = int(env.N / 2)
     if env._s < mid:
-        return env._s
+        return env._s - 1
     else:
-        return env.N - env._s
+        return env.N - env._s - 1
 
 def policy_one_dollar(env : GamblerEnv):
-    return 1
+    return 0
 
 def policy_two_dollar(env : GamblerEnv):
     if env._s == 1 or env._s == (env.N - 1):
-        return 1
+        return 0
     else:
-        return 2
+        return 1
 
 GamblerPolicy = {
     'all_in': policy_all_in,
@@ -184,12 +186,13 @@ class HermanEnv(Env):
     but what if the policy always choose (1,1,1), then it never stop... 
     so the max expectation time is inf... maybe min expectation time is better?
     """
-    def __init__(self, N, M=3, p=0.5, seed=None):
+    def __init__(self, N, M=3, p=0.5, reward=1, seed=None):
         super(HermanEnv, self).__init__('herman env')
         self.N = N
         self.M = M
         self.p = p
         self._s = 0
+        self.reward = reward
         self._states : HermanState = HermanState(N, M)
         if seed: np.random.seed(seed)
 
@@ -216,18 +219,21 @@ class HermanEnv(Env):
     def get_state_name(self, state):
         return self._states.get_state_name(state)
 
-    def step(self, action):
-        reward, act = 1, []
-        for i in range(self._states.get_state_size(self._s)):
-            if np.random.random() < self.p: # win
-                act.append(1)
-            else: # lose
-                act.append(0)
+    def step(self, action_idx):
+        reward, act = self.reward, []
+        if action_idx is not None:
+            act = self._states.state_action[self._s][action_idx][1]
+        else:
+            for i in range(self._states.get_state_size(self._s)):
+                if np.random.random() < self.p: # win
+                    act.append(1)
+                else: # lose
+                    act.append(0)
         self._s = self._states.tick(self._s, tuple(act))
         return (self._s, reward, self.is_done())
 
 def policy_random(env: HermanEnv):
-    return 1
+    return None
 
 HermanPolicy = {
     'random' : policy_random
