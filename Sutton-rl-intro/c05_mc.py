@@ -166,3 +166,75 @@ class OnlineMCSoft(OnlineMC):
         for s in q_value.keys():
             q_value[s] = np.round(q_value[s], decimals=4)
         return q_value
+
+
+class OfflineMC(MC):
+    def __init__(self, env: Env, gamma=1, epsilon=0.05):
+        super(OfflineMC, self).__init__('offline monte carlo algo', env, gamma)
+        self.epsilon = epsilon
+
+    def simulate(self, policy):
+        """
+        @param policy: behavior policy func, return value is action with action probility: (act, prob)
+        """
+        episode = []
+        state = self.env.reset()
+        done = False
+        while not done:
+            act, prob = policy(self.env)
+            next_state, reward, done = self.env.step(act)
+            episode.append((state, act, reward, next_state, prob)) # s, a, r, s, p
+            state = next_state
+        return episode
+
+    def fit_v(self, policy=None, epochs=1000, cal_type='first'):
+        raise NotImplementedError("Offline MC cat't estimate V(s)")
+
+    def fit_q(self, policy=None, epochs=1000, cal_method='weighted'):
+        """
+        @ param policy: if policy is none, return optimal Q, else return policy Q
+        @ param cal_method: 'common' or 'weighted
+        """
+        q_value = {}
+        c_value = {}
+        state_actions = self.env.get_all_state_action()
+        for (s, alist) in state_actions.items():
+            q_value[s] = np.zeros(len(alist))
+            c_value[s] = np.zeros(len(alist))
+        
+        def best_policy(env: Env):
+            idx = np.argmax(q_value[env._s])
+            return idx
+        
+        if policy is None:
+            policy = best_policy
+
+        def behavior_policy(env: Env): # add random on target policy
+            act = policy(env)
+            prob = 1 - self.epsilon + self.epsilon/len(q_value[env._s])
+            if np.random.random() < self.epsilon: 
+                idx = np.random.randint( 0, len(q_value[env._s]))
+                if idx != act:
+                    prob = self.epsilon/len(q_value[env._s])
+                    act = idx
+            return act, prob
+
+        for epoch in range(1, epochs+1):
+            episode = self.simulate(behavior_policy)
+            G, W = 0, 1
+            for e in reversed(episode):
+                state, act, reward, b_prob = e[0], e[1], e[2], e[4]
+                G = self.gamma * G + reward
+                if cal_method == 'weighted':
+                    c_value[state][act] += W
+                    q_value[state][act] = q_value[state][act] + (G - q_value[state][act]) * W/c_value[state][act]
+                else: # 'common'
+                    c_value[state][act] += 1
+                    q_value[state][act] = q_value[state][act] + (G * W - q_value[state][act])/c_value[state][act]
+                t_prob = 1 if b_prob > 0.5 else 0
+                W = W * t_prob / b_prob 
+                if W == 0: break
+        
+        for s in q_value.keys():
+            q_value[s] = np.round(q_value[s], decimals=4)
+        return q_value
