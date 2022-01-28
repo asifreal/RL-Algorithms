@@ -148,14 +148,7 @@ class OnlineMCSoft(OnlineMC):
             q_value[s] = np.zeros(len(alist))
             c_value[s] = np.zeros(len(alist))
         
-        def policy(env: Env):
-            if np.random.random() < self.epsilon: # random
-                idx = np.random.randint( 0, len(q_value[env._s]))
-            else:
-                values = q_value[env._s]
-                max_val = np.max(values)
-                idx = np.random.choice([act for act, value in enumerate(values) if value == max_val])
-            return idx
+        policy = self.getEpsilonGreedy(q_value)
 
         for epoch in range(1, epochs+1):
             self.epsilon = self.epsi_low + (self.epsi_high-self.epsi_low) * (np.exp(-1.0 * epoch/self.decay))
