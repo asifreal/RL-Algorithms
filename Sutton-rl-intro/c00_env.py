@@ -80,7 +80,7 @@ class GamblerEnv(Env):
     whether he win or lose, the game stop finally.
     """
     def __init__(self, N, p, win_reward = 1, lose_reward=0,
-                        include_terminate_state=True, seed=None):
+                        include_terminate_state=False, seed=None):
         """
         @param N: the target amount of money of the gambler
         @param p: the probability of win each game
@@ -138,28 +138,61 @@ class GamblerEnv(Env):
             elif self._s >= self.N: reward = self._rw
 
         return (self._s, reward, self.is_done())
+    
+    # input s is money not index
+    def possible_result(self, s, action_idx):
+        action = self.state_action[s][action_idx] 
+        for ns, p in zip([s+action, s-action], [self.p, 1 - self.p]):
+            yield (ns, 1 if ns >= self.N else 0, p, ns <= 0 or ns >= self.N)
 
+class policy_all_in:
+    def transaction(self, s, env: GamblerEnv):
+        mid = int(env.N / 2)
+        if s < mid:
+            for ns, p in zip([s * 2 - 1, -1], [env.p, 1 - env.p]): 
+                yield (ns, 0, p, ns==-1)
+        else:
+            for ns, p in zip([env.N - 1, s * 2 - env.N -1], [env.p, 1 - env.p]):
+                yield (ns, 1 if ns==env.N-1 else 0, p, ns < 0 or ns >= env.N-1) 
 
-def policy_all_in(env : GamblerEnv):
-    mid = int(env.N / 2)
-    if env._s < mid:
-        return env._s - 1
-    else:
-        return env.N - env._s - 1
+    def __call__(self, env : GamblerEnv):
+        mid = int(env.N / 2)
+        if env._s < mid:
+            return env._s - 1
+        else:
+            return env.N - env._s - 1
 
-def policy_one_dollar(env : GamblerEnv):
-    return 0
-
-def policy_two_dollar(env : GamblerEnv):
-    if env._s == 1 or env._s == (env.N - 1):
+class  policy_one_dollar:
+    def transaction(self, s, env: GamblerEnv):
+        for ns, p in zip([s+1, s-1], [env.p, 1 - env.p]):
+            yield (min(ns, env.N-1), 1 if ns >= env.N-1 else 0, p, ns < 0 or ns >= env.N-1)
+    def __call__(self, env : GamblerEnv):
         return 0
-    else:
-        return 1
+
+class policy_two_dollar:
+    def transaction(self, s, env: GamblerEnv):
+        if s == 1:
+            for ns, p in zip([2, 0], [env.p, 1 - env.p]):
+                yield (min(ns, env.N-1), 1 if ns >= env.N-1 else 0, p, ns < 0 or ns >= env.N-1)
+
+        elif s == env.N - 1:
+            for ns, p in zip([s+1, s-2], [env.p, 1 - env.p]):
+                yield (min(ns, env.N-1), 1 if ns >= env.N-1 else 0, p, ns < 0 or ns >= env.N-1)
+        
+        else:
+            for ns, p in zip([s+2, s-2], [env.p, 1 - env.p]):
+                yield (min(ns, env.N-1), 1 if ns >= env.N-1 else 0, p, ns < 0 or ns >= env.N-1)
+
+    def __call__(self, env : GamblerEnv):
+        if env._s == 1 or env._s == (env.N - 1):
+            return 0
+        else:
+            return 1
 
 GamblerPolicy = {
-    'all_in': policy_all_in,
-    'one_dollar': policy_one_dollar,
-    'two_dollar': policy_two_dollar
+    'all_in': policy_all_in(),
+    'one_dollar': policy_one_dollar(),
+    'two_dollar': policy_two_dollar()
 }
 
 
@@ -232,11 +265,20 @@ class HermanEnv(Env):
         self._s = self._states.tick(self._s, tuple(act))
         return (self._s, reward, self.is_done())
 
-def policy_random(env: HermanEnv):
-    return None
+
+class policy_random:
+    def transaction(self, s, env: HermanEnv):
+        for _, (ns, _, acts) in env._states.state_action[s].items():
+            prob = 0
+            for action in acts:
+                prob += env.p ** sum(action) * (1 - env.p) ** (len(action) - sum(action))
+            yield (ns,  env.reward, prob, ns==-1)
+
+    def __call__(self, env: HermanEnv):
+        return None
 
 HermanPolicy = {
-    'random' : policy_random
+    'random' : policy_random()
 }
 
 if __name__ == "__main__":
